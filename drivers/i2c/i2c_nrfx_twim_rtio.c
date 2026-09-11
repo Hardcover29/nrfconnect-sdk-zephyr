@@ -120,7 +120,11 @@ static bool i2c_nrfx_twim_rtio_start(const struct device *dev)
 		return i2c_rtio_complete(ctx, 0);
 	case RTIO_OP_I2C_RECOVER:
 		(void)i2c_nrfx_twim_recover_bus(dev);
-		return false;
+		/** This request will not generate an event therefore, this
+		 * code immediately submits a CQE in order to unblock
+		 * i2c_rtio_recover.
+		 */
+		return i2c_rtio_complete(ctx, 0);
 	case RTIO_OP_AWAIT:
 		iodev_sqe = CONTAINER_OF(sqe, struct rtio_iodev_sqe, sqe);
 		rtio_iodev_sqe_await_signal(iodev_sqe, i2c_nrfx_twim_rtio_sqe_signaled,
