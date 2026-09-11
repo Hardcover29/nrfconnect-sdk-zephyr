@@ -4,6 +4,7 @@
  */
 
 #include <errno.h>
+#include <string.h>
 
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/sys/util.h>
@@ -39,6 +40,8 @@
 #define MAIN_SIZE 0x26U
 
 #define GPIO_MODE_GPOIRQ 5
+
+#define MFD_NPM13XX_MAX_BURST_LEN 8U
 
 struct mfd_npm13xx_config {
 	struct i2c_dt_spec i2c;
@@ -207,15 +210,20 @@ int mfd_npm13xx_reg_write(const struct device *dev, uint8_t base, uint8_t offset
 }
 
 int mfd_npm13xx_reg_write_burst(const struct device *dev, uint8_t base, uint8_t offset, void *data,
-				size_t len)
+                              size_t
 {
-	const struct mfd_npm13xx_config *config = dev->config;
-	struct i2c_msg msg[2] = {
-		{.buf = (uint8_t []){base, offset}, .len = 2, .flags = I2C_MSG_WRITE},
-		{.buf = data, .len = len, .flags = I2C_MSG_WRITE | I2C_MSG_STOP},
-	};
+      const struct mfd_npm13xx_config *config = dev->config;
+      uint8_t buff[2U + MFD_NPM13XX_M
 
-	return i2c_transfer_dt(&config->i2c, msg, 2);
+      if (len > MFD_NPM13XX_MAX_BURST_LEN) {
+              return -ENOSPC;
+      }
+
+      buff[0] = base;
+      buff[1] = offset;
+      memcpy(&buff[2], data, len);
+
+      return i2c_write_dt(&config->i2
 }
 
 int mfd_npm13xx_reg_update(const struct device *dev, uint8_t base, uint8_t offset, uint8_t data,
