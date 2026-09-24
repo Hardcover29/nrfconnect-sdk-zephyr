@@ -70,7 +70,11 @@ fcb_getnext_nolock(struct fcb *fcb, struct fcb_entry *loc)
 		if (rc == 0) {
 			return 0;
 		}
-		if (rc == -ENOTSUP) {
+		if (rc != -EBADMSG) {
+			/*
+			 * End of the sector, or an element that cannot be read
+			 * (e.g. a corrupt length) and so cannot be stepped over.
+			 */
 			goto next_sector;
 		}
 	}
