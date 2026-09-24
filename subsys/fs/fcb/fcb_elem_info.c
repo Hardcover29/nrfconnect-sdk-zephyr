@@ -13,6 +13,18 @@
 #define FCB_FIXED_ENDMARKER 0xab
 
 /*
+ * A length field torn by power loss can claim more than the sector holds. Report
+ * such an element as corrupt, so walks skip past the end of the sector instead of
+ * failing on an out-of-bounds read.
+ */
+static bool
+fcb_elem_fits(struct fcb *_fcb, const struct fcb_entry *loc)
+{
+	return loc->fe_data_off + fcb_len_in_flash(_fcb, loc->fe_data_len) +
+	       fcb_len_in_flash(_fcb, FCB_CRC_SZ) <= loc->fe_sector->fs_size;
+}
+
+/*
  * Given offset in flash sector, fill in rest of the fcb_entry, and crc8 over
  * the data.
  */
@@ -43,6 +55,10 @@ fcb_elem_crc8(struct fcb *_fcb, struct fcb_entry *loc, uint8_t *c8p)
 	}
 	loc->fe_data_off = loc->fe_elem_off + fcb_len_in_flash(_fcb, cnt);
 	loc->fe_data_len = len;
+
+	if (!fcb_elem_fits(_fcb, loc)) {
+		return -EBADMSG;
+	}
 
 	crc8 = CRC8_CCITT_INITIAL_VALUE;
 	crc8 = crc8_ccitt(crc8, tmp_str, cnt);
@@ -93,6 +109,10 @@ fcb_elem_endmarker_fixed(struct fcb *_fcb, struct fcb_entry *loc, uint8_t *em)
 	}
 	loc->fe_data_off = loc->fe_elem_off + fcb_len_in_flash(_fcb, cnt);
 	loc->fe_data_len = len;
+
+	if (!fcb_elem_fits(_fcb, loc)) {
+		return -EBADMSG;
+	}
 
 	*em = FCB_FIXED_ENDMARKER;
 	return 0;
