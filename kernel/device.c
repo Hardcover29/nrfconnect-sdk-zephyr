@@ -215,6 +215,7 @@ int z_impl_device_deinit(const struct device *dev)
 	}
 
 	dev->state->initialized = false;
+	dev->state->init_res = 0U;
 
 	return 0;
 #else
