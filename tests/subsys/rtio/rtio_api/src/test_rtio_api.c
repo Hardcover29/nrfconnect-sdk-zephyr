@@ -579,6 +579,57 @@ ZTEST(rtio_api, test_rtio_multishot_are_not_resubmitted_when_failed)
 	}
 }
 
+/**
+ * @brief Test that a multishot completion after a cancel offers no mempool buffer
+ *
+ * The test iodev ignores RTIO_SQE_CANCELED, so the read it is working on when
+ * the cancel lands completes OK, as with a driver whose own cancel check has
+ * already passed. The executor returns that read's blocks to the pool, so its
+ * completion must not offer them to the consumer.
+ */
+ZTEST(rtio_api, test_rtio_multishot_cancel_cqe_has_no_mempool_buffer)
+{
+	int res;
+	int count = 0;
+	struct rtio_sqe sqe;
+	struct rtio_cqe cqe;
+	struct rtio_sqe *handle;
+	struct rtio *r = &r_simple;
+	uint8_t *buffer = NULL;
+	uint32_t buffer_len = 0;
+
+	for (int i = 0; i < MEM_BLK_SIZE; i++) {
+		mempool_data[i] = i;
+	}
+
+	rtio_sqe_prep_read_multishot(&sqe, (struct rtio_iodev *)&iodev_test_simple, 0,
+				     mempool_data);
+	res = rtio_sqe_copy_in_get_handles(r, &sqe, &handle, 1);
+	zassert_ok(res);
+
+	rtio_submit(r, 1);
+
+	/* The first read completes before the cancel and owns its blocks */
+	zassert_equal(1, rtio_cqe_copy_out(r, &cqe, 1, K_FOREVER));
+	zassert_ok(cqe.result, "Result should be ok but got %d", cqe.result);
+	zassert_ok(rtio_cqe_get_mempool_buffer(r, &cqe, &buffer, &buffer_len));
+	rtio_release_buffer(r, buffer, buffer_len);
+
+	/* The re-armed read is already with the iodev, which completes it OK */
+	rtio_sqe_cancel(handle);
+
+	while (rtio_cqe_copy_out(r, &cqe, 1, K_MSEC(100)) != 0) {
+		count++;
+		zassert_equal(cqe.flags, 0, "CQE after the cancel should carry no flags");
+		buffer = NULL;
+		zassert_equal(-EINVAL, rtio_cqe_get_mempool_buffer(r, &cqe, &buffer, &buffer_len),
+			      "CQE after the cancel should not report a mempool buffer");
+		zassert_is_null(buffer, "CQE after the cancel should not report a mempool buffer");
+	}
+
+	zassert_true(count > 0, "Expected a completion after the cancel");
+}
+
 RTIO_DEFINE(r_transaction, SQE_POOL_SIZE, CQE_POOL_SIZE);
 
 RTIO_IODEV_TEST_DEFINE(iodev_test_transaction0);
